@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using TeleSharp.TL;
 using TeleSharp.TL.Messages;
 using TLSharp.Core;
+using Renci.SshNet;
 
 namespace groupagree_watcher
 {
@@ -20,8 +21,15 @@ namespace groupagree_watcher
         static async Task runAsync(string[] args)
         {
             var config = System.IO.File.ReadAllLines("client.config");
+            var connectionInfo = new ConnectionInfo(config[2],
+                                        config[3],
+                                        new PasswordAuthenticationMethod(config[3], config[4]));
+            var sshClient = new SshClient(connectionInfo);
+            var sshCommand = config[5];
+
             var client = new TelegramClient(int.Parse(config[0]), config[1]);
             await client.ConnectAsync();
+
             if (!client.IsUserAuthorized())
             {
                 Console.WriteLine("Please enter your phone number");
@@ -42,17 +50,17 @@ namespace groupagree_watcher
                     user = await client.MakeAuthWithPasswordAsync(password, password_str);
                 }
             }
-            //get available contacts
-            var result = await client.GetContactsAsync();
 
-            //find recipient in contacts
+            var result = await client.GetContactsAsync();
+            
             var userToSendTo = result.Users
                 .Where(x => x.GetType() == typeof(TLUser))
                 .Cast<TLUser>()
-                .FirstOrDefault(x => x.FirstName == "Jan");
+                .FirstOrDefault(x => x.Username == "browny99");
 
-            //send message
-            await client.SendMessageAsync(new TLInputPeerUser() { UserId = userToSendTo.Id }, "OUR_MESSAGE");
+            var logPeer = new TLInputPeerUser() { UserId = userToSendTo.Id };
+
+            await client.SendMessageAsync(logPeer, "Started monitoring");
 
             string UserNameToSendMessage = "@corgigroupagreebot";
             var unameResult = await client.SearchUserAsync(UserNameToSendMessage);
@@ -61,23 +69,36 @@ namespace groupagree_watcher
                 .Where(x => x.GetType() == typeof(TLUser))
                 .OfType<TLUser>()
                 .FirstOrDefault(x => x.Username == UserNameToSendMessage.TrimStart('@'));
-            for (int i = 0; i < 10; i++)
+
+            int retryCounter = 0;
+            while (!System.IO.File.Exists("cancel.wjdummy"))
             {
                 TLInputPeerUser botToCheck = new TLInputPeerUser() { UserId = userByName.Id, AccessHash = (long)userByName.AccessHash };
                 await client.SendMessageAsync(botToCheck, "/start");
-                await Task.Delay(TimeSpan.FromSeconds(5));
+
+                await Task.Delay(TimeSpan.FromSeconds(30));
+
                 TLAbsMessages history = await client.GetHistoryAsync(botToCheck, limit: 1);
-                Console.WriteLine(history.ToString());
                 TLMessagesSlice slice = (TLMessagesSlice)history;
                 var message = ((TLMessage)slice.Messages.ElementAt(0));
-                if (IsBitSet(message.Flags, 2) && IsBitSet(message.Flags, 1) && message.Message.StartsWith("Hey, good to see you again"))
+
+                if (message.Out == false && message.Message.StartsWith("Hey, good to see you again"))
                 {
-                    Console.WriteLine("testing");
+                    var request = new TLRequestReadHistory();
+                    request.Peer = botToCheck;
+                    await client.SendRequestAsync<TLAffectedMessages>(request);
+                } else
+                {
+                    retryCounter++;
                 }
-                Console.WriteLine(Convert.ToString(message.Flags, 2));
-                var request = new TLRequestReadHistory();
-                request.Peer = botToCheck;
-                await client.SendRequestAsync<TLAffectedMessages>(request);
+                if (retryCounter > 1) {
+                    sshClient.Connect();
+                    var res = sshClient.CreateCommand(sshCommand).Execute();
+                    sshClient.Disconnect();
+                    await client.SendMessageAsync(logPeer, "Restarted server\n\n" + res);
+                    await Task.Delay(TimeSpan.FromSeconds(90));
+                    retryCounter = 0;
+                }
             }
         }
 
