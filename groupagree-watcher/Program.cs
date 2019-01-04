@@ -10,6 +10,7 @@ namespace groupagree_watcher
     {
         static void Main(string[] args)
         {
+            //testing
         }
     }
 }
