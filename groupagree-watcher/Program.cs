@@ -73,31 +73,46 @@ namespace groupagree_watcher
             int retryCounter = 0;
             while (!System.IO.File.Exists("cancel.wjdummy"))
             {
-                TLInputPeerUser botToCheck = new TLInputPeerUser() { UserId = userByName.Id, AccessHash = (long)userByName.AccessHash };
-                await client.SendMessageAsync(botToCheck, "/start");
-
-                await Task.Delay(TimeSpan.FromSeconds(30));
-
-                TLAbsMessages history = await client.GetHistoryAsync(botToCheck, limit: 1);
-                TLMessagesSlice slice = (TLMessagesSlice)history;
-                var message = ((TLMessage)slice.Messages.ElementAt(0));
-
-                if (message.Out == false && message.Message.StartsWith("Hey, good to see you again"))
+                try
                 {
-                    var request = new TLRequestReadHistory();
-                    request.Peer = botToCheck;
-                    await client.SendRequestAsync<TLAffectedMessages>(request);
-                } else
+                    TLInputPeerUser botToCheck = new TLInputPeerUser() { UserId = userByName.Id, AccessHash = (long)userByName.AccessHash };
+                    await client.SendMessageAsync(botToCheck, "/start");
+
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+
+                    TLAbsMessages history = await client.GetHistoryAsync(botToCheck, limit: 1);
+                    TLMessagesSlice slice = (TLMessagesSlice)history;
+                    var message = ((TLMessage)slice.Messages.ElementAt(0));
+
+                    if (message.Out == false && message.Message.StartsWith("Hey, good to see you again"))
+                    {
+                        var request = new TLRequestReadHistory();
+                        request.Peer = botToCheck;
+                        await client.SendRequestAsync<TLAffectedMessages>(request);
+                    }
+                    else
+                    {
+                        retryCounter++;
+                        await client.SendMessageAsync(logPeer, "30 sec unresponsive");
+                    }
+                    if (retryCounter > 5)
+                    {
+                        sshClient.Connect();
+                        var res = sshClient.CreateCommand(sshCommand).Execute();
+                        sshClient.Disconnect();
+                        await client.SendMessageAsync(logPeer, "Restarted server\n\n" + res);
+                        await Task.Delay(TimeSpan.FromSeconds(90));
+                        retryCounter = 0;
+                    }
+                } catch (Exception e)
                 {
-                    retryCounter++;
-                }
-                if (retryCounter > 1) {
-                    sshClient.Connect();
-                    var res = sshClient.CreateCommand(sshCommand).Execute();
-                    sshClient.Disconnect();
-                    await client.SendMessageAsync(logPeer, "Restarted server\n\n" + res);
-                    await Task.Delay(TimeSpan.FromSeconds(90));
-                    retryCounter = 0;
+                    try
+                    {
+                        await client.SendMessageAsync(logPeer, "Error: \n" + e.ToString());
+                    } catch (Exception ex)
+                    {
+                        Console.WriteLine($"ERROR\n\n{e}\n{ex}\n\nENDERROR");
+                    }
                 }
             }
         }
