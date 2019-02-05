@@ -89,6 +89,7 @@ namespace groupagree_watcher
                         var request = new TLRequestReadHistory();
                         request.Peer = botToCheck;
                         await client.SendRequestAsync<TLAffectedMessages>(request);
+                        retryCounter = 0;
                     }
                     else
                     {
