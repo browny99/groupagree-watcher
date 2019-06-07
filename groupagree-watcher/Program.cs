@@ -113,6 +113,7 @@ namespace groupagree_watcher
                     } catch (Exception ex)
                     {
                         Console.WriteLine($"ERROR\n\n{e}\n{ex}\n\nENDERROR");
+                        return;
                     }
                 }
             }
